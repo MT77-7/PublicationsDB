@@ -1,6 +1,6 @@
 import sqlite3
 import hashlib
-DB_NAME = "db new.db" 
+DB_NAME = "PublicationsDB.db" 
 
 def get_connection():
     con = sqlite3.connect(DB_NAME)
@@ -23,7 +23,7 @@ def get_all_publications(): #προβολή όλων των δημοσιεύσε
             publications.append(dict(zip(colnames, row)))
     return publications
 
-def get_folder_publications(folder_id, username):
+def get_folder_publications(folder_id, username): #επιστρέφει τις δημοσιεύσεις ενός φακέλου
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
@@ -32,7 +32,7 @@ def get_folder_publications(folder_id, username):
             WHERE id_fakelou = ? AND Username = ?
         """, (folder_id, username))
 
-        return cur.fetchall()  # [(doi,), ...]
+        return cur.fetchall()
 
 def insert_publication(doi, title, language, summary, url, pub_type, extra_data): #εισαγωγή δημοσίευσης
     with get_connection() as con:
@@ -163,7 +163,7 @@ def get_all_institutions(): #προβολή όλων των ιδρυμάτων �
 
 #Λειτουργίες λέξεων-κλειδιών
 
-def get_keywords_for_publication(doi):
+def get_keywords_for_publication(doi): #επιστρέφει τις λέξεις-κλειδιά μιας δημοσίευσης
     keywords = []
     with get_connection() as con:
         cur = con.cursor()
@@ -179,7 +179,7 @@ def get_keywords_for_publication(doi):
     return keywords
 
 
-def get_keyword_id(keyword):   #επιστρέφει το id μιας λέξης-κλειδί
+def get_keyword_id(keyword): #επιστρέφει το id μιας λέξης-κλειδί
     with get_connection() as con:
         cur=con.cursor()
         cur.execute("""
@@ -222,7 +222,7 @@ def insert_keyword(doi, keyword): #προσθήκη λέξης-κλειδί σε
         
 #Λειτουργίες αναζήτησης/φιλτραρίσματος
 
-def search_publications(word):
+def search_publications(word): #αναζήτηση δημοσίευσης με βάση τίτλο ή DOI
     word_pattern = f"%{word}%"
     with get_connection() as con:
         cur = con.cursor()
@@ -239,7 +239,7 @@ def search_publications(word):
         return [dict(zip(colnames, r)) for r in rows]
 
     
-def search_authors(name):  
+def search_authors(name):  #αναζήτηση συγγραφέα με βάση ονοματεπώνυμο
     word_pattern = f"%{name}%"
     with get_connection() as con:
         cur = con.cursor()
@@ -253,7 +253,7 @@ def search_authors(name):
         colnames = [d[0] for d in cur.description]
         return [dict(zip(colnames, r)) for r in rows]
 
-def get_pubs_by_author(author_id):  
+def get_pubs_by_author(author_id): #επιστρέφει τις δημοσιεύσεις ενός συγγραφέα
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
@@ -318,7 +318,7 @@ def update_username(old_username, new_username): #τροποποίηση usernam
     
 #Λειτουργίες σχολίων
     
-def get_comments_by_pub_and_user(doi, username):
+def get_comments_by_pub_and_user(doi, username): #επιστρέφει σχόλια του χρήστη σε μια δημοσίευση
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
@@ -359,10 +359,9 @@ def insert_comment_to_pub(doi, username, text): #προσθήκη σχολίου
             raise ValueError("Αποτυχία εισαγωγής σχολίου.")
             con.rollback() #ακύρωση αλλαγών σε περίπτωση σφάλματος
 
-def delete_comment(comment_id, username):
+def delete_comment(comment_id, username): #διαγραφή σχολίου
     with get_connection() as con:
         cur = con.cursor()
-        # έλεγξε ότι το σχόλιο ανήκει στο user
         cur.execute("""
             SELECT 1
             FROM PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI
@@ -371,13 +370,11 @@ def delete_comment(comment_id, username):
         if not cur.fetchone():
             raise LookupError("Δεν βρέθηκε σχόλιο για αυτόν τον χρήστη.")
 
-        # σβήσε τη συσχέτιση
         cur.execute("""
             DELETE FROM PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI
             WHERE id_sxoliou = ? AND Username = ?;
         """, (comment_id, username))
 
-        # σβήσε το σχόλιο (αν δεν χρησιμοποιείται αλλού)
         cur.execute("DELETE FROM SXOLIO WHERE id_sxoliou = ?;", (comment_id,))
         con.commit()
         return True
@@ -399,7 +396,7 @@ def create_folder(name, username, parent_id, size=0): #δημιουργία φα
             print(f"Σφάλμα κατά τη δημιουργία φακέλου: {e}")
             return None
 
-def get_or_create_folder(name, username, parent_id=None):
+def get_or_create_folder(name, username, parent_id=None): #επιστρέφει ή δημιουργεί φάκελο
     # Αν δεν υπάρχει parent_id, χρησιμοποιούμε το default folder
     if parent_id is None:
         parent_id = get_or_create_folder("Γενικά", username)
@@ -425,7 +422,7 @@ def get_or_create_folder(name, username, parent_id=None):
         con.commit()
         return cur.lastrowid
 
-def get_folder_id(username, folder_name):
+def get_folder_id(username, folder_name): #επιστρέφει folder id του φακέλου
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
@@ -436,8 +433,7 @@ def get_folder_id(username, folder_name):
         row = cur.fetchone()
         return row[0] if row else None
 
-def add_pub_to_folder(doi, folder_id, username):
-    #Το folder_id είναι υποχρεωτικό (NOT NULL στη βάση)
+def add_pub_to_folder(doi, folder_id, username): #προσθήκη δημοσίευσης σε φάκελο
     if folder_id is None:
         raise ValueError("Πρέπει να οριστεί ένας έγκυρος φάκελος.")
         
@@ -453,7 +449,7 @@ def add_pub_to_folder(doi, folder_id, username):
             #Αν είναι ήδη αποθηκευμένη στον φάκελο, δεν κάνουμε τίποτα
             pass
 
-def remove_pub_from_folder(doi, folder_id, username):
+def remove_pub_from_folder(doi, folder_id, username): #αφαίρεση δημοσίευσης από φάκελο
     with get_connection() as con: 
         cur = con.cursor()
         try:
@@ -468,7 +464,7 @@ def remove_pub_from_folder(doi, folder_id, username):
             print(f"Σφάλμα κατά την αφαίρεση από τον φάκελο: {e}")
             con.rollback()       
 
-def get_user_folders(username):
+def get_user_folders(username): #επιστρέφει τους φακέλους του χρήστη
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
@@ -483,7 +479,7 @@ def get_user_folders(username):
         return [dict(zip(colnames, r)) for r in rows]
 
     
-def get_subfolders(folder_id, username):
+def get_subfolders(folder_id, username): #επιστρέφει τους υποφακέλους του χρήστη
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
@@ -494,7 +490,7 @@ def get_subfolders(folder_id, username):
         return cur.fetchall()
 
 
-def delete_folder(folder_id, username):
+def delete_folder(folder_id, username): #διαγραφή φακέλου
     with get_connection() as con:
         cur = con.cursor()
         try:
@@ -552,12 +548,11 @@ def verify_user(username, password): #επαλήθευση χρήστη
         return user
     return None
 
-def get_user_by_username(username): 
-    """Επιστρέφει τα στοιχεία χρήστη συμπεριλαμβανομένου του ρόλου."""
+def get_user_by_username(username): #επιστρέφει τα στοιχεία χρήστη
     with get_connection() as con:
         cur = con.cursor()
         cur.execute("""
-            SELECT Username, email, Onomateponymo, Password, is_admin
+            SELECT Username, email, Onomateponymo, Password, Is_admin
             FROM XRHSTHS 
             WHERE Username = ?;
         """, (username,))
@@ -567,7 +562,6 @@ def get_user_by_username(username):
         colnames = [d[0] for d in cur.description]
         return dict(zip(colnames, row))
 
-def is_admin(username):
-    """Ελέγχει αν ένας χρήστης είναι διαχειριστής."""
+def is_admin(username): #ελέγχει αν ένας χρήστης είναι διαχειριστής
     user = get_user_by_username(username)
-    return user is not None and user.get('is_admin') == 1
+    return user is not None and user.get('Is_admin') == 1
