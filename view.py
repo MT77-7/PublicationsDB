@@ -1,22 +1,19 @@
 from mymodel import (get_user_folders, get_folder_publications_details)
 
-def show_message(message):
-    """Εμφανίζει ένα απλό μήνυμα επιτυχίας ή ενημέρωσης."""
-    print(f"\n✅ {message}")
+def show_message(message): #Εμφανίζει ένα μήνυμα επιτυχίας ή ενημέρωσης
+    print(f"\n {message}")
 
-def show_error(error_message):
-    """Εμφανίζει ένα μήνυμα σφάλματος με ευδιάκριτο τρόπο."""
-    print(f"\n❌ ΣΦΑΛΜΑ: {error_message}")
+def show_error(error_message): #Εμφανίζει ένα μήνυμα σφάλματος
+    print(f"\n ΣΦΑΛΜΑ: {error_message}")
 
-def show_menu(options, title="ΜΕΝΟΥ"):
+def show_menu(options, title="ΜΕΝΟΥ"): #εμφάνιση μενού
     print(f"\n=== {title} ===")
     for k, v in sorted(options.items(), key=lambda x: int(x[0])):
         print(f"{k}. {v}")
     print("0. Έξοδος")
 
 
-def show_publications_list(publications, title="Δημοσιεύσεις"):
-    """Εμφανίζει μια λίστα δημοσιεύσεων σε μορφή πίνακα."""
+def show_publications_list(publications, title="Δημοσιεύσεις"): #Εμφανίζει μια λίστα δημοσιεύσεων σε μορφή πίνακα
     if not publications:
         print(f"\n--- {title} ---")
         print("Δεν βρέθηκαν αποτελέσματα.")
@@ -26,12 +23,11 @@ def show_publications_list(publications, title="Δημοσιεύσεις"):
     print(f"{'DOI':<25} | {'Τίτλος':<50}")
     print("-" * 80)
     for pub in publications:
-        # Κόβουμε τον τίτλο αν είναι πολύ μεγάλος για να μην χαλάει ο πίνακας
+        #Κόβουμε τον τίτλο αν είναι πολύ μεγάλος
         display_title = (pub['Titlos'][:47] + '...') if len(pub['Titlos']) > 47 else pub['Titlos']
         print(f"{pub['DOI']:<25} | {display_title:<50}")
 
-def show_publication_details(pub, authors=None, comments=None):
-    """Εμφανίζει όλες τις λεπτομέρειες μιας συγκεκριμένης δημοσίευσης."""
+def show_publication_details(pub, authors=None, comments=None):  #Εμφανίζει όλες τις λεπτομέρειες μιας συγκεκριμένης δημοσίευσης
     print("\n" + "="*60)
     print(f"ΠΛΗΡΟΦΟΡΙΕΣ ΔΗΜΟΣΙΕΥΣΗΣ")
     print("="*60)
@@ -53,21 +49,20 @@ def show_publication_details(pub, authors=None, comments=None):
         print("Δεν υπάρχουν σχόλια για αυτή τη δημοσίευση.")
     print("="*60)
 
-def print_folder_subtree(username, root_id, show_pubs=False):
-    folders = get_user_folders(username)  # list[dict]
+def print_folder_subtree(username, root_id, show_pubs=False): #εμφανίζει όλους τους φακέλους του χρήστη σε μορφή δέντρου
+    folders = get_user_folders(username) 
 
-    children_map = {}  # parent_id -> [(id, name)]
-    name_map = {}      # id -> name
+    children_map = {} 
+    name_map = {} 
 
     for f in folders:
         fid = f["id_fakelou"]
-        parent_id = f["id_kyriou_fakelou"]  # μπορεί να είναι None
+        parent_id = f["id_kyriou_fakelou"] 
         name = f["Onoma"]
 
         name_map[fid] = name
         children_map.setdefault(parent_id, []).append((fid, name))
 
-    # sort παιδιά αλφαβητικά
     for pid in children_map:
         children_map[pid].sort(key=lambda x: x[1].lower())
 
@@ -88,18 +83,15 @@ def print_folder_subtree(username, root_id, show_pubs=False):
         for i, (child_id, _) in enumerate(kids):
             _print(child_id, new_prefix, is_last=(i == len(kids) - 1))
 
-    # Root header (Γενικά)
     root_name = name_map.get(root_id, "Γενικά")
     print(f"\n📁 {root_name} [{root_id}]")
 
-    # ✅ Root publications (δημοσιεύσεις μέσα στον Γενικά)
     if show_pubs:
         root_pubs = get_folder_publications_details(root_id, username)
         for p in root_pubs:
             title = (p["Titlos"][:47] + "...") if len(p["Titlos"]) > 47 else p["Titlos"]
             print(f"   📄 {p['DOI']} | {title}")
 
-    # Root children
     kids = children_map.get(root_id, [])
     if not kids:
         print("   (Κανένας υποφάκελος)")
