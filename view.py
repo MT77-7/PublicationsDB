@@ -1,5 +1,3 @@
-from mymodel import (get_user_folders, get_folder_publications_details)
-
 def show_message(message): #Εμφανίζει ένα μήνυμα επιτυχίας ή ενημέρωσης
     print(f"\n {message}")
 
@@ -49,15 +47,18 @@ def show_publication_details(pub, authors=None, comments=None):  #Εμφανίζ
         print("Δεν υπάρχουν σχόλια για αυτή τη δημοσίευση.")
     print("="*60)
 
-def print_folder_subtree(username, root_id, show_pubs=False): #εμφανίζει όλους τους φακέλους του χρήστη σε μορφή δέντρου
-    folders = get_user_folders(username) 
+def print_folder_subtree(folders, root_id, pubs_by_folder=None, show_pubs=False):
+    """
+    folders: list[dict] με keys: id_fakelou, id_kyriou_fakelou, Onoma
+    pubs_by_folder: dict[int, list[dict]] όπου κάθε pub έχει DOI, Titlos
+    """
 
-    children_map = {} 
-    name_map = {} 
+    children_map = {}
+    name_map = {}
 
     for f in folders:
         fid = f["id_fakelou"]
-        parent_id = f["id_kyriou_fakelou"] 
+        parent_id = f["id_kyriou_fakelou"]
         name = f["Onoma"]
 
         name_map[fid] = name
@@ -71,8 +72,8 @@ def print_folder_subtree(username, root_id, show_pubs=False): #εμφανίζε�
         connector = "└─ " if is_last else "├─ "
         print(f"{prefix}{connector}📂 {name} [{node_id}]")
 
-        if show_pubs:
-            pubs = get_folder_publications_details(node_id, username)
+        if show_pubs and pubs_by_folder is not None:
+            pubs = pubs_by_folder.get(node_id, [])
             pub_prefix = prefix + ("   " if is_last else "│  ")
             for p in pubs:
                 title = (p["Titlos"][:47] + "...") if len(p["Titlos"]) > 47 else p["Titlos"]
@@ -86,9 +87,8 @@ def print_folder_subtree(username, root_id, show_pubs=False): #εμφανίζε�
     root_name = name_map.get(root_id, "Γενικά")
     print(f"\n📁 {root_name} [{root_id}]")
 
-    if show_pubs:
-        root_pubs = get_folder_publications_details(root_id, username)
-        for p in root_pubs:
+    if show_pubs and pubs_by_folder is not None:
+        for p in pubs_by_folder.get(root_id, []):
             title = (p["Titlos"][:47] + "...") if len(p["Titlos"]) > 47 else p["Titlos"]
             print(f"   📄 {p['DOI']} | {title}")
 
@@ -99,3 +99,40 @@ def print_folder_subtree(username, root_id, show_pubs=False): #εμφανίζε�
 
     for i, (child_id, _) in enumerate(kids):
         _print(child_id, prefix="", is_last=(i == len(kids) - 1))
+
+
+def show_users(users):
+    if not users:
+        print("\nΔεν υπάρχουν χρήστες.")
+        return
+
+    print("\n--- ΧΡΗΣΤΕΣ ΣΥΣΤΗΜΑΤΟΣ ---")
+    print(f"{'Username':<20} | Ρόλος")
+    print("-" * 35)
+
+    for u in users:
+        role = "ADMIN" if u["is_admin"] == 1 else "Χρήστης"
+        print(f"{u['Username']:<20} | {role}")
+
+def show_saved_publications_and_pick(saved_pubs):
+    if not saved_pubs:
+        print("\nΔεν έχετε αποθηκευμένες δημοσιεύσεις.")
+        return None
+
+    print("\n--- ΟΙ ΑΠΟΘΗΚΕΥΜΕΝΕΣ ΔΗΜΟΣΙΕΥΣΕΙΣ ΣΑΣ ---")
+    for i, pub in enumerate(saved_pubs, 1):
+        print(f"{i}. {pub['Titlos']} (DOI: {pub['DOI']})")
+
+    choice = input("\nΕπιλέξτε αριθμό (Enter για ακύρωση): ").strip()
+    if choice == "":
+        return None
+    if not choice.isdigit():
+        print("Μη έγκυρη επιλογή.")
+        return None
+
+    idx = int(choice) - 1
+    if idx < 0 or idx >= len(saved_pubs):
+        print("Μη έγκυρη επιλογή.")
+        return None
+
+    return saved_pubs[idx]["DOI"]

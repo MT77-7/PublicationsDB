@@ -23,6 +23,21 @@ def get_all_publications(): #προβολή όλων των δημοσιεύσε
             publications.append(dict(zip(colnames, row)))
     return publications
 
+def get_saved_publications(username):
+    """Επιστρέφει όλες τις αποθηκευμένες δημοσιεύσεις του χρήστη (ανεξάρτητα από φάκελο)."""
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute("""
+            SELECT DISTINCT D.DOI, D.Titlos
+            FROM DIMOSIEYSI D
+            JOIN XRHSTHS_APOTHIK_DIMOS_SE_FAKELO X ON D.DOI = X.DOI_dim
+            WHERE X.Username = ?
+            ORDER BY D.Titlos;
+        """, (username,))
+        rows = cur.fetchall()
+        return [{"DOI": doi, "Titlos": title} for doi, title in rows]
+
+
 def get_folder_publications_details(folder_id, username): #Επιστρέφει δημοσιεύσεις που υπάρχουν σε συγκεκριμένο φάκελο χρήστη
     with get_connection() as con:
         cur = con.cursor()
@@ -72,6 +87,20 @@ def delete_publication(doi): #διαγραφή δημοσίευσης
             con.commit()
         except sqlite3.IntegrityError as e:
             raise RuntimeError("Δεν είναι δυνατή η διαγραφή: υπάρχουν σχετικές αναφορές.") from e
+
+def get_publication_by_doi(doi):
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute("""
+            SELECT DOI, Titlos, Glossa, Imer_prosthikis, Perilipsi, URL
+            FROM DIMOSIEYSI
+            WHERE DOI = ?;
+        """, (doi,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        colnames = [d[0] for d in cur.description]
+        return dict(zip(colnames, row))
 
 def get_pub_type(doi): #επιστρέφει τον τύπο της δημοσίευσης
     with get_connection() as con:
@@ -547,6 +576,62 @@ def new_user(username, email, fullname, password): #εγγραφή νέου χρ
                 raise ValueError("Το email χρησιμοποιείται ήδη") from e
             raise ValueError("Αποτυχία εγγραφής χρήστη") from e
 
+def delete_user_account(username):
+    """
+    Διαγράφει χρήστη + δεδομένα που εξαρτώνται από Username.
+    Κάνει manual cascade για να μην αποτύχει λόγω FK constraints.
+    """
+    if not username:
+        raise ValueError("Το username δεν μπορεί να είναι κενό.")
+
+    with get_connection() as con:
+        cur = con.cursor()
+        try:
+            # 1) Έλεγχος ότι ο χρήστης υπάρχει
+            cur.execute("SELECT 1 FROM XRHSTHS WHERE Username = ?;", (username,))
+            if not cur.fetchone():
+                raise LookupError("Δεν βρέθηκε χρήστης με αυτό το username.")
+
+            # 2) Διαγραφή συσχετίσεων δημοσιεύσεων σε φακέλους
+            cur.execute("""
+                DELETE FROM XRHSTHS_APOTHIK_DIMOS_SE_FAKELO
+                WHERE Username = ?;
+            """, (username,))
+
+            # 3) Διαγραφή συσχετίσεων σχολίων χρήστη σε δημοσιεύσεις
+            # (κρατάς SXOLIO, αλλά η συσχέτιση με Username είναι εδώ)
+            cur.execute("""
+                DELETE FROM PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI
+                WHERE Username = ?;
+            """, (username,))
+
+            # 4) Διαγραφή φακέλων χρήστη
+            # Σημείωση: αν το FAKELOS έχει FK parent->child, καλύτερα να σβήνουμε “από φύλλα προς ρίζα”.
+            # Εδώ το κάνουμε σε loop, ώστε να σβήσει τα φύλλα πρώτα.
+            while True:
+                cur.execute("""
+                    DELETE FROM FAKELOS
+                    WHERE Username = ?
+                      AND id_fakelou NOT IN (
+                          SELECT DISTINCT id_kyriou_fakelou
+                          FROM FAKELOS
+                          WHERE Username = ? AND id_kyriou_fakelou IS NOT NULL
+                      );
+                """, (username, username))
+                if cur.rowcount == 0:
+                    break
+
+            # 5) Τέλος: διαγραφή χρήστη
+            cur.execute("DELETE FROM XRHSTHS WHERE Username = ?;", (username,))
+
+            con.commit()
+            return True
+
+        except Exception:
+            con.rollback()
+            raise
+
+
 def verify_user(username, password): #επαλήθευση χρήστη
     user=get_user_by_username(username)
     if not user:
@@ -570,6 +655,20 @@ def get_user_by_username(username): #επιστρέφει τα στοιχεία 
             return None
         colnames = [d[0] for d in cur.description]
         return dict(zip(colnames, row))
+    
+def get_all_usernames():
+    """Επιστρέφει λίστα με όλα τα usernames."""
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute("""
+            SELECT Username, Is_admin
+            FROM XRHSTHS
+            ORDER BY Username;
+        """)
+        rows = cur.fetchall()
+        if not rows:
+            return []
+        return [{"Username": r[0], "Is_admin": r[1]} for r in rows]
 
 def is_admin(username): #ελέγχει αν ένας χρήστης είναι διαχειριστής
     user = get_user_by_username(username)
