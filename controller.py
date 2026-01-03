@@ -1,13 +1,13 @@
-from mymodel import (get_all_publications, get_folder_publications, insert_publication, delete_publication,
+from mymodel import (get_all_publications, get_folder_publications_details, insert_publication, delete_publication,
                      get_pub_type, get_detailed_pub_info, get_all_authors, insert_author,
                      get_authors_from_publication, link_author_to_publication, get_all_institutions,
                      get_keywords_for_publication, get_keyword_id, insert_new_keyword, insert_keyword,
                      search_publications, search_authors, get_pubs_by_author, get_pubs_by_keyword, update_pub_title, update_username,
-                     get_folder_id, get_comments_by_pub_and_user, insert_comment_to_pub, delete_comment, create_folder, get_or_create_folder,
+                     get_folder_parent_id, is_in_general_subtree, get_comments_by_pub_and_user, insert_comment_to_pub, delete_comment, get_or_create_folder,
                      add_pub_to_folder, remove_pub_from_folder, get_user_folders, get_subfolders, 
                      delete_folder, hash_password, new_user, get_user_by_username, verify_user, is_admin)
 
-from view import (show_message, show_error, show_menu, show_publications_list, show_publication_details, show_folders)
+from view import (show_message, show_error, show_menu, show_publications_list, show_publication_details, print_folder_subtree)
 
 
 starting_options = {
@@ -24,9 +24,10 @@ user_options = {
     "6": "Διαγραφή φακέλου",
     "7": "Δημιουργία σχολίου",
     "8": "Διαγραφή σχολίου",
-    "9": "Αναζήτηση δημοσίευσης",
-    "10": "Αναζήτηση συγγραφέα",
-    "11": "Αναζήτηση λέξης-κλειδιού"
+    "9": "Προβολή σχολίων μιας δημοσίευσης",
+    "10": "Αναζήτηση δημοσίευσης με βάση τίτλο ή DOI",
+    "11": "Αναζήτηση δημοσίευσης με βάση συγγραφέα",
+    "12": "Αναζήτηση δημοσίευσης με βάση λέξη-κλειδί"
 
 }
 
@@ -36,10 +37,11 @@ admin_options = {
     "3": "Διαγραφή δημοσίευσης",
     "4": "Προβολή δημοσίευσεων", 
     "5": "Προβολή συγγραφέων και ιδρυμάτων"
+    #"6": "Διαγραφή χρήστη"
 
 }
 
-def sign_in(): #σύνδεση χρήστη
+def sign_in():
     username = input("Εισάγετε το username σας: ").strip()
     password = input("Εισάγετε τον κωδικό πρόσβασης σας: ").strip()
     try:
@@ -48,13 +50,13 @@ def sign_in(): #σύνδεση χρήστη
             show_error("Λάθος username ή κωδικός.")
             return None
         print("\nΕπιτυχής σύνδεση.\n")
-        return user 
+        return user  # χρήσιμο να επιστρέφεις και τα στοιχεία
     except Exception as e:
         show_error(f"Σφάλμα σύνδεσης: {e}")
         return None
 
 
-def sign_up(): #εγγραφή χρήστη
+def sign_up():
     email = input("Εισάγετε το email σας: ").strip()
     fullname = input("Εισάγετε το ονοματεπώνυμο σας: ").strip()
     username = input("Εισάγετε username: ").strip()
@@ -68,36 +70,74 @@ def sign_up(): #εγγραφή χρήστη
         show_error(str(e))
         return False
 
-def _ui_show_folders_with_default(username): #επιστρέφει όλους τους φακέλους του χρήστη (Γενικό φάκελο και υποφακέλους)
+def show_general_subtree(username):
     try:
-        get_or_create_folder("Γενικά", username, parent_id=None)
-        folders = get_user_folders(username)
-        show_folders(folders)
+        general_id = get_or_create_folder("Γενικά", username)
+        print_folder_subtree(username, general_id, show_pubs=True)
     except Exception as e:
-        show_error(f"Σφάλμα κατά την εμφάνιση φακέλων: {e}")
+        show_error(f"Σφάλμα κατά την εμφάνιση subtree: {e}")
 
 
-def show_folder_contents(username): #περιεχόμενα φακέλου
-    folder_name = input("Δώσε το όνομα του φακέλου: ")
-    folder_id = get_folder_id(username, folder_name)
-    subfolders = get_subfolders(folder_id, username)
-    publications = get_folder_publications(folder_id, username)
+def show_folder_contents_detailed(folder_id, username):
+    subfolders = get_subfolders(folder_id, username)  # [(id_fakelou, Onoma), ...]
+    pubs = get_folder_publications_details(folder_id, username)  # list[dict]
 
-    print("\n Υποφάκελοι:")
+    print("\n📁 Υποφάκελοι:")
     if not subfolders:
         print("  (Κανένας υποφάκελος)")
     else:
         for fid, name in subfolders:
             print(f"  [{fid}] {name}")
 
-    print("\n Δημοσιεύσεις:")
-    if not publications:
-        print("  (Καμία δημοσίευση)")
-    else:
-        for (doi,) in publications:
-            print(f"  - {doi}")
-    
-def add_publication(username): #προσθήκη δημοσίευσης
+    show_publications_list(pubs, title="📄 Δημοσιεύσεις στον φάκελο")
+
+def show_folder_under_general(username):
+    try:
+        general_id = get_or_create_folder("Γενικά", username)
+
+        print_folder_subtree(username, general_id, show_pubs=False)
+
+        raw = input("\nΔώστε το ID του φακέλου που θέλετε να εμφανίσετε: ").strip()
+        if not raw.isdigit():
+            show_error("Μη έγκυρο ID.")
+            return
+
+        folder_id = int(raw)
+
+        if not is_in_general_subtree(folder_id, general_id, username):
+            show_error("Ο φάκελος δεν βρίσκεται μέσα στον 'Γενικά'.")
+            return
+
+        show_folder_contents_detailed(folder_id, username)
+
+    except Exception as e:
+        show_error(f"Σφάλμα στην επιλογή 'Εμφάνιση φακέλου': {e}")
+
+
+
+def show_comments_for_pub(username): #προβολή σχολίων του χρήστη για μια δημοσίευση
+    doi = input("Εισάγετε το DOI της δημοσίευσης για να δείτε τα σχόλιά σας: ").strip()
+    if not doi:
+        show_error("Το DOI δεν μπορεί να είναι κενό.")
+        return
+
+    try:
+        comments = get_comments_by_pub_and_user(doi, username)
+
+        if not comments:
+            print(f"\nΔεν έχετε γράψει σχόλια στη δημοσίευση με DOI: {doi}")
+            return
+
+        print(f"\n--- ΤΑ ΣΧΟΛΙΑ ΣΑΣ ΓΙΑ ΤΗ ΔΗΜΟΣΙΕΥΣΗ {doi} ---")
+        for c in comments:
+            print(f"ID: {c['id_sxoliou']} | Ημερομηνία: {c['Imer_dimiourgias']}")
+            print(f"Σχόλιο: {c['Periexomeno']}")
+            print("-" * 40)
+
+    except Exception as e:
+        show_error(f"Σφάλμα κατά την ανάκτηση σχολίων: {e}")
+
+def add_publication(username):
     doi = input("Εισάγετε το DOI της δημοσίευσης: ").strip()
     if not doi:
         show_error("Το DOI δεν μπορεί να είναι κενό.")
@@ -106,7 +146,8 @@ def add_publication(username): #προσθήκη δημοσίευσης
     confirm = input("Θέλετε να ορίσετε συγκεκριμένο φάκελο; (ν/ο): ").strip().lower()
 
     try:
-        general_id = get_or_create_folder("Γενικά", username) 
+        # Εξασφαλίζουμε ότι υπάρχει ο root "Γενικά"
+        general_id = get_or_create_folder("Γενικά", username)  # root (parent_id=None)
 
         if confirm == "ν":
             folder_name = input("Εισάγετε όνομα φακέλου: ").strip()
@@ -114,9 +155,10 @@ def add_publication(username): #προσθήκη δημοσίευσης
                 show_error("Το όνομα φακέλου δεν μπορεί να είναι κενό.")
                 return
 
+            # Δημιουργία/εύρεση φακέλου ΚΑΤΩ από το "Γενικά"
             folder_id = get_or_create_folder(folder_name, username, parent_id=general_id)
         else:
-            #Default:"Γενικά"
+            # Default: "Γενικά"
             folder_id = general_id
 
         add_pub_to_folder(doi, folder_id, username)
@@ -128,34 +170,50 @@ def add_publication(username): #προσθήκη δημοσίευσης
         show_error(f"Σφάλμα κατά την προσθήκη δημοσίευσης: {e}")
 
 
-def delete_publication_from_folder(username): #διαγραφή δημοσίευσης από φάκελο
-    folder_name = input("Εισάγετε όνομα του φακέλου που βρίσκεται η δημοσίευση: ").strip()
-
-    doi = input("Εισάγετε το DOI της δημοσίευσης που θέλετε να διαγράψετε: ").strip()
-
-    confirm = input(f"Θέλετε σίγουρα να διαγράψετε τη δημοσίευση με DOI {doi}; (ν/ο): ").strip().lower()
-
-    if confirm != "ν":
-        print("Ακύρωση διαγραφής δημοσίευσης.")
-        return
-
+def delete_publication_from_folder(username):
     try:
-        folder_id = get_folder_id(username, folder_name)
+        doi = input("Εισάγετε το DOI της δημοσίευσης που θέλετε να αφαιρέσετε: ").strip()
+        if not doi:
+            show_error("Το DOI δεν μπορεί να είναι κενό.")
+            return
+
+        general_id = get_or_create_folder("Γενικά", username)
+
+        # δείχνουμε subtree για να δει ids
+        print_folder_subtree(username, general_id, show_pubs=False)
+
+        raw = input("\nΔώστε το ID του φακέλου από τον οποίο θα αφαιρεθεί η δημοσίευση: ").strip()
+        if not raw.isdigit():
+            show_error("Μη έγκυρο ID.")
+            return
+        folder_id = int(raw)
+
+        # επιτρέπουμε μόνο φακέλους μέσα στο Γενικά
+        if not is_in_general_subtree(folder_id, general_id, username):
+            show_error("Ο φάκελος δεν βρίσκεται μέσα στον 'Γενικά'.")
+            return
+
+        confirm = input(f"Θέλετε σίγουρα να αφαιρέσετε το DOI {doi} από τον φάκελο ID {folder_id}; (ν/ο): ").strip().lower()
+        if confirm != "ν":
+            show_message("Ακύρωση αφαίρεσης δημοσίευσης.")
+            return
+
         remove_pub_from_folder(doi, folder_id, username)
-        print("Επιτυχής διαγραφή δημοσίευσης.")
+        show_message("Η δημοσίευση αφαιρέθηκε επιτυχώς από τον φάκελο.")
 
     except LookupError as e:
         show_error(str(e))
+    except Exception as e:
+        show_error(f"Σφάλμα κατά την αφαίρεση δημοσίευσης: {e}")
 
-    except ValueError as e:
-        show_error(str(e))
 
-def new_folder(username): #δημιουργία φακέλου
+def new_folder(username):
     folder_name = input("Εισάγετε το όνομα του φακέλου για δημιουργία: ").strip()
     if not folder_name:
         show_error("Το όνομα φακέλου δεν μπορεί να είναι κενό.")
         return
 
+    # Ρωτάμε τον χρήστη αν θέλει συγκεκριμένο φάκελο parent
     confirm = input("Θέλετε να ορίσετε κύριο φάκελο; (ν/ο): ").strip().lower()
 
     try:
@@ -176,27 +234,44 @@ def new_folder(username): #δημιουργία φακέλου
     except ValueError as e:
         show_error(str(e))
 
-def delete_user_folder(username): #διαγραφή φακέλου από τον χρήστη
-    folder_name = input("Εισάγετε το όνομα του φακέλου που θέλετε να διαγράψετε: ").strip()
-
-    confirm = input(f"Θέλετε σίγουρα να διαγράψετε τον φάκελο '{folder_name}'; (ν/ο): ").strip().lower()
-
-    if confirm != "ν":
-        print("Ακύρωση διαγραφής φακέλου.")
-        return
-
+def delete_user_folder(username):
     try:
-        folder_id = get_folder_id(username, folder_name)
+        general_id = get_or_create_folder("Γενικά", username)
+
+        # δείχνουμε subtree για να δει ids
+        print_folder_subtree(username, general_id, show_pubs=False)
+
+        raw = input("\nΔώστε το ID του φακέλου που θέλετε να διαγράψετε: ").strip()
+        if not raw.isdigit():
+            show_error("Μη έγκυρο ID.")
+            return
+        folder_id = int(raw)
+
+        # δεν επιτρέπουμε να σβήσει τον root Γενικά
+        if folder_id == general_id:
+            show_error("Δεν μπορείτε να διαγράψετε τον φάκελο 'Γενικά'.")
+            return
+
+        # επιτρέπουμε μόνο φακέλους μέσα στο Γενικά
+        if not is_in_general_subtree(folder_id, general_id, username):
+            show_error("Ο φάκελος δεν βρίσκεται μέσα στον 'Γενικά'.")
+            return
+
+        confirm = input(f"Θέλετε σίγουρα να διαγράψετε τον φάκελο με ID {folder_id}; (ν/ο): ").strip().lower()
+        if confirm != "ν":
+            show_message("Ακύρωση διαγραφής φακέλου.")
+            return
+
         delete_folder(folder_id, username)
-        print("Επιτυχής διαγραφή φακέλου.")
+        show_message("Επιτυχής διαγραφή φακέλου.")
 
     except LookupError as e:
         show_error(str(e))
+    except Exception as e:
+        show_error(f"Σφάλμα κατά τη διαγραφή φακέλου: {e}")
 
-    except ValueError as e:
-        show_error(str(e))
 
-def create_comment(username): #δημιουργία σχολίου σε δημοσίευση
+def create_comment(username):
     doi = input("Εισάγετε το doi της δημοσίευσης: ").strip()
     comment = input("Γράψτε το σχόλιο: ").strip()
 
@@ -208,7 +283,7 @@ def create_comment(username): #δημιουργία σχολίου σε δημο
     except Exception as e:
         print("Παρουσιάστηκε απρόσμενο σφάλμα:", e)
 
-def delete_user_comment(username): #διαγραφή σχολίου από τον χρήστη
+def delete_user_comment(username):
     doi = input("Εισάγετε το DOI της δημοσίευσης στην οποία είναι το σχόλιο: ").strip()
 
     try:
@@ -243,7 +318,7 @@ def delete_user_comment(username): #διαγραφή σχολίου από το�
     except Exception as e:
         show_error(f"Σφάλμα κατά τη διαγραφή σχολίου: {e}")
 
-def search_pub(): #αναζήτηση δημοσίευσης με βάση τίτλο ή DOI
+def search_pub():
     search = input("Εισάγετε το DOI ή τον τίτλο της δημοσίευσης: ").strip()
 
     if not search:
@@ -264,7 +339,7 @@ def search_pub(): #αναζήτηση δημοσίευσης με βάση τί�
     except Exception as e:
         show_error(f"Σφάλμα κατά την αναζήτηση: {e}")
 
-def search_pub_by_author(): #αναζήτηση δημοσίευσης με βάση τον συγγραφέα
+def search_pub_by_author():
     name = input("Εισάγετε ονοματεπώνυμο συγγραφέα: ").strip()
     if not name:
         show_error("Η αναζήτηση δεν μπορεί να είναι κενή.")
@@ -302,7 +377,7 @@ def search_pub_by_author(): #αναζήτηση δημοσίευσης με βά
     except Exception as e:
         show_error(f"Σφάλμα κατά την αναζήτηση: {e}")
 
-def search_pub_by_keyword(): #αναζήτηση δημοσίευσης με βάση λέξη-κλειδί
+def search_pub_by_keyword():
     keyword = input("Εισάγετε λέξη-κλειδί: ").strip()
     if not keyword:
         show_error("Η αναζήτηση δεν μπορεί να είναι κενή.")
@@ -321,7 +396,7 @@ def search_pub_by_keyword(): #αναζήτηση δημοσίευσης με β�
     except Exception as e:
         show_error(f"Σφάλμα κατά την αναζήτηση: {e}")
 
-def admin_add_publication(): #εισαγωγή δημοσίευσης στη βάση από τον διαχειριστή
+def admin_add_publication():
     doi = input("DOI: ").strip()
     title = input("Τίτλος: ").strip()
     language = input("Γλώσσα: ").strip()
@@ -342,6 +417,7 @@ def admin_add_publication(): #εισαγωγή δημοσίευσης στη β�
             "Tomos": input("Τόμος: ").strip(),
             "Selides_periodikou": input("Σελίδες περιοδικού: ").strip(),
         }
+        # βασικός έλεγχος
         if not extra_data["ISSN"] or not extra_data["Imer_dimosieysis"]:
             show_error("ISSN και Ημερομηνία δημοσίευσης είναι υποχρεωτικά για Περιοδικό.")
             return
@@ -379,7 +455,7 @@ def admin_add_publication(): #εισαγωγή δημοσίευσης στη β�
         show_error(f"Σφάλμα κατά την προσθήκη: {e}")
 
 
-def admin_update_publication(): #τροποποίηση τίτλου από τον διαχειριστή
+def admin_update_publication():
     doi = input("Εισάγετε DOI δημοσίευσης για τροποποίηση: ").strip()
     if not doi:
         show_error("Το DOI δεν μπορεί να είναι κενό.")
@@ -398,7 +474,7 @@ def admin_update_publication(): #τροποποίηση τίτλου από το
     except Exception as e:
         show_error(f"Σφάλμα κατά την τροποποίηση: {e}")
 
-def admin_delete_publication(): #διαγραφή δημοσίευσης από τον διαχειριστή
+def admin_delete_publication():
     doi = input("Εισάγετε DOI δημοσίευσης για διαγραφή: ").strip()
     if not doi:
         show_error("Το DOI δεν μπορεί να είναι κενό.")
@@ -419,14 +495,14 @@ def admin_delete_publication(): #διαγραφή δημοσίευσης από 
     except Exception as e:
         show_error(f"Σφάλμα κατά τη διαγραφή: {e}")
 
-def admin_view_publications(): #προβολή όλων των δημοσιεύσεων από τον διαχειριστή
+def admin_view_publications():
     try:
         pubs = get_all_publications()
         show_publications_list(pubs, title="Όλες οι δημοσιεύσεις")
     except Exception as e:
         show_error(f"Σφάλμα κατά την προβολή: {e}")
 
-def admin_view_authors_and_institutions(): #προβολή όλων των συγγραφέων και ιδρυμάτων από τον διαχειριστή
+def admin_view_authors_and_institutions():
     try:
         authors = get_all_authors()
         institutions = get_all_institutions()
@@ -450,19 +526,20 @@ def admin_view_authors_and_institutions(): #προβολή όλων των συ�
 
 
 
-def handle_user_choice(choice, username): #διαχείριση επιλογών χρήστη
+def handle_user_choice(choice, username):
     actions = {
-        "1": lambda: _ui_show_folders_with_default(username),
-        "2": lambda: show_folder_contents(username),
+        "1": lambda: show_general_subtree(username),
+        "2": lambda: show_folder_under_general(username),
         "3": lambda: add_publication(username),
         "4": lambda: delete_publication_from_folder(username),
         "5": lambda: new_folder(username),
         "6": lambda: delete_user_folder(username),
         "7": lambda: create_comment(username),
         "8": lambda: delete_user_comment(username),
-        "9": lambda: search_pub(),
-        "10": lambda: search_pub_by_author(),
-        "11": lambda: search_pub_by_keyword(),
+        "9": lambda: show_comments_for_pub(username),
+        "10": lambda: search_pub(),
+        "11": lambda: search_pub_by_author(),
+        "12": lambda: search_pub_by_keyword(),
     }
     action = actions.get(choice)
     if not action:
@@ -472,7 +549,7 @@ def handle_user_choice(choice, username): #διαχείριση επιλογών
 
 
 
-def handle_admin_choice(choice): #διαχείριση επιλογών διαχειριστή
+def handle_admin_choice(choice):
     actions = {
         "1": admin_add_publication,
         "2": admin_update_publication,
@@ -487,7 +564,7 @@ def handle_admin_choice(choice): #διαχείριση επιλογών διαχ
     action()
 
 
-def app_loop(): #loop εφαρμογής
+def app_loop():
     while True:
         show_menu(starting_options, title="ΑΡΧΙΚΟ ΜΕΝΟΥ")
         choice = input("Επιλογή: ").strip()
@@ -496,27 +573,29 @@ def app_loop(): #loop εφαρμογής
             print("Έξοδος από την εφαρμογή.")
             break
 
-        if choice == "1": #σύνδεση
+        # 1) Σύνδεση
+        if choice == "1":
             user = sign_in()
             if not user:
                 continue
 
-            username = user["Username"] 
-            admin = user.get("is_admin") == 1
+            username = user["Username"]  # προσοχή: έτσι το επιστρέφει η get_user_by_username
+            admin = user.get("Is_admin") == 1
 
             if admin:
                 admin_loop(username)
             else:
                 user_loop(username)
 
-        elif choice == "2": #εγγραφή
+        # 2) Εγγραφή
+        elif choice == "2":
             sign_up()
 
         else:
             show_error("Μη έγκυρη επιλογή.")
 
 
-def user_loop(username): #loop χρήστη
+def user_loop(username):
     while True:
         show_menu(user_options, title=f"ΜΕΝΟΥ ΧΡΗΣΤΗ ({username})")
         choice = input("Επιλογή: ").strip()
@@ -526,7 +605,7 @@ def user_loop(username): #loop χρήστη
         handle_user_choice(choice, username)
 
 
-def admin_loop(username): #loop διαχειριστή
+def admin_loop(username):
     while True:
         show_menu(admin_options, title=f"ΜΕΝΟΥ ADMIN ({username})")
         choice = input("Επιλογή: ").strip()
