@@ -23,7 +23,18 @@ def get_all_publications(): #προβολή όλων των δημοσιεύσε
             publications.append(dict(zip(colnames, row)))
     return publications
 
-def insert_publication(doi, title, language, summary, url): #εισαγωγή δημοσίευσης
+def get_folder_publications(folder_id, username):
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute("""
+            SELECT DOI_dim
+            FROM XRHSTHS_APOTHIK_DIMOS_SE_FAKELO
+            WHERE id_fakelou = ? AND Username = ?
+        """, (folder_id, username))
+
+        return cur.fetchall()  # [(doi,), ...]
+
+def insert_publication(doi, title, language, summary, url, pub_type, extra_data): #εισαγωγή δημοσίευσης
     with get_connection() as con:
         cur=con.cursor()
         try:
@@ -31,10 +42,20 @@ def insert_publication(doi, title, language, summary, url): #εισαγωγή δ
                 INSERT INTO DIMOSIEYSI (DOI, Titlos, Glossa, Imer_prosthikis, Perilipsi, URL)
                 VALUES (?, ?, ?, DATE('now'), ?, ?);
             """, (doi, title, language, summary, url))
+            if pub_type=="Περιοδικό":
+                cur.execute("""INSERT INTO ARTHRO_SE_PERIODIKO (DOI_dimosieysis, ISSN, Imer_dimosieysis, Teyxos, Tomos, Selides_periodikou)
+                            VALUES (?, ?, ?, ?, ?, ?);
+                            """, (doi, extra_data['ISSN'], extra_data['Imer_dimosieysis'], extra_data['Teyxos'], extra_data['Tomos'], extra_data['Selides_periodikou']))
+            elif pub_type=="Συνέδριο":
+                cur.execute("""INSERT INTO ARTHRO_SE_SYNEDRIO (DOI_dimosieysis, ISBN, Onoma_synedriou, Imer_dieksagogis, Topos_dieksagogis)
+                            VALUES (?, ?, ?, ?, ?);
+                            """, (doi, extra_data['ISBN'], extra_data['Onoma_synedriou'], extra_data['Imer_dieksagogis'], extra_data['Topos_dieksagogis']))
             con.commit()
-        except sqlite3.IntegrityError as e:
-            raise ValueError(f"Αποτυχία εισαγωγής: Το DOI '{doi}' υπάρχει ήδη.") from e
-
+            return True
+        except sqlite3.Error as e:
+            con.rollback()
+            raise ValueError(f"Αποτυχία εισαγωγής: {e}")
+        
 def delete_publication(doi): #διαγραφή δημοσίευσης
     with get_connection() as con: 
         cur = con.cursor()
@@ -142,32 +163,31 @@ def get_all_institutions(): #προβολή όλων των ιδρυμάτων �
 
 #Λειτουργίες λέξεων-κλειδιών
 
-def get_keywords_for_publication(doi): #επιστρέφει λέξεις-κλειδιά μιας δημοσίευσης
-    keywords=[]
+def get_keywords_for_publication(doi):
+    keywords = []
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
         cur.execute("""
-        SELECT lk.keyword FROM DIMOS_EXEI_LEKSEIS_KLEIDIA AS d
-        JOIN LEKSI_KLEIDI AS lk ON d.id_leksis=s2.lk_keyword_id
-        WHERE d.DOI_dimosieysis=?;
-    """, (doi,))
-    colnames=[d[0] for d in cur.description]
-    for row in cur.fetchall():
-        keywords.append(dict(zip(colnames, row)))
+            SELECT lk.keyword
+            FROM DIMOS_EXEI_LEKSEIS_KLEIDIA AS d
+            JOIN LEKSI_KLEIDI AS lk ON d.id_leksis = lk.keyword_id
+            WHERE d.DOI_dimosieysis = ?;
+        """, (doi,))
+        colnames = [d[0] for d in cur.description]
+        for row in cur.fetchall():
+            keywords.append(dict(zip(colnames, row)))
     return keywords
 
+
 def get_keyword_id(keyword):   #επιστρέφει το id μιας λέξης-κλειδί
-    keywordID=[]
     with get_connection() as con:
         cur=con.cursor()
         cur.execute("""
         SELECT keyword_id FROM LEKSI_KLEIDI
         WHERE keyword=?;
     """, (keyword,))
-    colnames=[d[0] for d in cur.description]
-    for row in cur.fetchall():
-        keywordID.append(dict(zip(colnames, row)))
-    return keywordID
+        row=cur.fetchone()
+        return row[0] if row else None
 
 def insert_new_keyword(keyword): #εισαγωγή λέξης-κλειδιού στη βάση
     with get_connection() as con:
@@ -177,10 +197,8 @@ def insert_new_keyword(keyword): #εισαγωγή λέξης-κλειδιού �
             con.commit()
             return cur.lastrowid
         except sqlite3.IntegrityError:
-            return get_keyword_id(keyword)
-        except Exception as e:
-            raise RuntimeError(f"Σφάλμα εισαγωγής λέξης-κλειδιού: {e}") from e
-        
+            return get_keyword_id(keyword)     
+   
 def insert_keyword(doi, keyword): #προσθήκη λέξης-κλειδί σε δημοσίευση, αποθηκεύει τη λέξη αν δεν υπάρχει
     keyword=keyword.strip()
     if not keyword:
@@ -204,46 +222,65 @@ def insert_keyword(doi, keyword): #προσθήκη λέξης-κλειδί σε
         
 #Λειτουργίες αναζήτησης/φιλτραρίσματος
 
-def search_publications(word): #Αναζήτηση δημοσίευσης βάσει τίτλου ή DOI
-    word_pattern=f"%{word}%"
+def search_publications(word):
+    word_pattern = f"%{word}%"
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
         cur.execute("""
-                    SELECT DISTINCT DOI, Titlos, Glossa, Imer_prosthikis, Perilipsi, URL
-                    FROM DIMOSIEYSI WHERE Titlos LIKE ? OR DOI LIKE ? ORDER BY Titlos;""", (word_pattern, word_pattern))
-        row=cur.fetchall()
-        if not row:
-            return None
-        colnames=[d[0] for d in cur.description]
-        return dict(zip(colnames, row))
-    
-def search_authors(name): #Αναζήτηση συγγραφέα με βάση ονοματεπώνυμο
-    word_pattern=f"%{name}%"
-    with get_connection() as con:
-        cur=con.cursor()
-        cur.execute("""
-                    SELECT id_syggrafea, Onomateponymo
-                    FROM SYGGRAFEAS WHERE Onomateponymo LIKE ? ORDER BY Onomateponymo;""", (word_pattern,))
-        row=cur.fetchall()
-        if not row:
-            return None
-        colnames=[d[0] for d in cur.description]
-        return dict(zip(colnames, row))
+            SELECT DISTINCT DOI, Titlos, Glossa, Imer_prosthikis, Perilipsi, URL
+            FROM DIMOSIEYSI
+            WHERE Titlos LIKE ? OR DOI LIKE ?
+            ORDER BY Titlos;
+        """, (word_pattern, word_pattern))
+        rows = cur.fetchall()
+        if not rows:
+            return []
+        colnames = [d[0] for d in cur.description]
+        return [dict(zip(colnames, r)) for r in rows]
 
-def get_pubs_by_author(author_id): #επιστρέφει δημοσιεύσεις ενός συγγραφέα
+    
+def search_authors(name):  
+    word_pattern = f"%{name}%"
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
+        cur.execute("""
+            SELECT id_syggrafea, Onomateponymo
+            FROM SYGGRAFEAS
+            WHERE Onomateponymo LIKE ?
+            ORDER BY Onomateponymo;
+        """, (word_pattern,))
+        rows = cur.fetchall()
+        colnames = [d[0] for d in cur.description]
+        return [dict(zip(colnames, r)) for r in rows]
+
+def get_pubs_by_author(author_id):  
+    with get_connection() as con:
+        cur = con.cursor()
         cur.execute("""
             SELECT D.DOI, D.Titlos, D.Glossa, D.Imer_prosthikis, D.Perilipsi, D.URL
-            FROM DIMOSIEYSI AS D JOIN SYSXETISI_SYGGR_DIMOS_IDR AS S
-            ON D.DOI=S.DOI_dimosieysis WHERE id_syggrafea=?
+            FROM DIMOSIEYSI AS D
+            JOIN SYSXETISI_SYGGR_DIMOS_IDR AS S ON D.DOI = S.DOI_dimosieysis
+            WHERE S.id_syggrafea = ?
             ORDER BY D.Imer_prosthikis DESC;
-                    """, (author_id,))
-        row=cur.fetchall()
-        if not row:
-            return None
+        """, (author_id,))
+        rows = cur.fetchall()
+        colnames = [d[0] for d in cur.description]
+        return [dict(zip(colnames, r)) for r in rows]
+    
+def get_pubs_by_keyword(keyword): #επιστρέφει τις δημοσιεύσεις που σχετίζονται με μια λέξη-κλειδί
+    with get_connection() as con:
+        cur=con.cursor()
+        cur.execute("""SELECT DISTINCT D.DOI, D.Titlos, D.Glossa, D.Imer_prosthikis, D.URL
+                    FROM DIMOSIEYSI AS D
+                    JOIN DIMOS_EXEI_LEKSEIS_KLEIDIA AS E ON D.DOI=E.DOI_dimosieysis
+                    JOIN LEKSI_KLEIDI AS LK ON E.id_leksis=LK.keyword_id
+                    WHERE LK.keyword LIKE ?;
+                    """, (f'%{keyword}%',))
+        rows=cur.fetchall()
+        if not rows:
+            return []
         colnames=[d[0] for d in cur.description]
-        return dict(zip(colnames, row))
+        return [dict(zip(colnames, row)) for row in rows]
     
 def update_pub_title(doi, new_title): #τροποποίηση τίτλου δημοσίευσης
     with get_connection() as con:
@@ -280,22 +317,29 @@ def update_username(old_username, new_username): #τροποποίηση usernam
             return False
     
 #Λειτουργίες σχολίων
-
-def get_comments_by_pub(doi): #επιστρέφει τα σχόλια μιας δημοσίευσης
+    
+def get_comments_by_pub_and_user(doi, username):
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
         cur.execute("""
-            SELECT S.id_sxoliou, S.Periexomeno, S.Imer_dimiourgias
-            FROM SXOLIO AS S JOIN PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI AS P
-            ON S.id_sxoliou=P.id_sxoliou
-            WHERE P.DOI_dimosieysis=?
-            ORDER BY D.Imer_dimiourgias DESC;
-                    """, (doi,))
-        row=cur.fetchall()
-        if not row:
-            return None
-        colnames=[d[0] for d in cur.description]
-        return dict(zip(colnames, row))
+            SELECT S.id_sxoliou,
+                   S.Periexomeno,
+                   S.Imer_dimiourgias
+            FROM SXOLIO AS S
+            JOIN PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI AS P
+                 ON S.id_sxoliou = P.id_sxoliou
+            WHERE P.DOI_dimosieysis = ?
+              AND P.Username = ?
+            ORDER BY S.Imer_dimiourgias DESC;
+        """, (doi, username))
+
+        rows = cur.fetchall()
+        if not rows:
+            return []
+
+        colnames = [d[0] for d in cur.description]
+        return [dict(zip(colnames, row)) for row in rows]
+
     
 def insert_comment_to_pub(doi, username, text): #προσθήκη σχολίου σε δημοσίευση
     with get_connection() as con:
@@ -307,7 +351,7 @@ def insert_comment_to_pub(doi, username, text): #προσθήκη σχολίου
             """, (text,))
             last_comment_id=cur.lastrowid
             cur.execute("""
-                INSERT INTO PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI (id_sxoliou, Username, DOI_dimosieysis
+                INSERT INTO PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI (id_sxoliou, Username, DOI_dimosieysis)
                 VALUES (?, ?, ?);
                         """, (last_comment_id, username, doi))
             con.commit()
@@ -315,28 +359,29 @@ def insert_comment_to_pub(doi, username, text): #προσθήκη σχολίου
             raise ValueError("Αποτυχία εισαγωγής σχολίου.")
             con.rollback() #ακύρωση αλλαγών σε περίπτωση σφάλματος
 
-def delete_comment(comment_id, username): #διαγραφή σχολίου
+def delete_comment(comment_id, username):
     with get_connection() as con:
-        cur=con.cursor()
-        try:
-            #διαγράφω πρώτα τις συσχετίσεις
-            cur.execute("""
-                DELETE FROM PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI
-                WHERE id_sxoliou=?;
-                """, (comment_id,))
-            #διαγραφή σχολίου
-            cur.execute("""
-                DELETE FROM SXOLIO
-                WHERE id_sxoliou=? AND Username=?;
-                """, (comment_id, username))
-            if cur.rowcount==0:
-                raise LookupError("Δεν βρέθηκε το σχόλιο")
-            con.commit()
-            return True
-        except sqlite3.Error as e:
-            print(f"Σφάλμα κατά τη διαγραφή του σχολίου: {e}")
-            con.rollback() #ακύρωση αλλαγών σε περίπτωση σφάλματος
-            return False
+        cur = con.cursor()
+        # έλεγξε ότι το σχόλιο ανήκει στο user
+        cur.execute("""
+            SELECT 1
+            FROM PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI
+            WHERE id_sxoliou = ? AND Username = ?;
+        """, (comment_id, username))
+        if not cur.fetchone():
+            raise LookupError("Δεν βρέθηκε σχόλιο για αυτόν τον χρήστη.")
+
+        # σβήσε τη συσχέτιση
+        cur.execute("""
+            DELETE FROM PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI
+            WHERE id_sxoliou = ? AND Username = ?;
+        """, (comment_id, username))
+
+        # σβήσε το σχόλιο (αν δεν χρησιμοποιείται αλλού)
+        cur.execute("DELETE FROM SXOLIO WHERE id_sxoliou = ?;", (comment_id,))
+        con.commit()
+        return True
+
       
 #Λειτουργίες φακέλων
 
@@ -354,56 +399,125 @@ def create_folder(name, username, parent_id, size=0): #δημιουργία φα
             print(f"Σφάλμα κατά τη δημιουργία φακέλου: {e}")
             return None
 
-def add_pub_to_folder(doi, folder_id, username): #προσθήκη δημοσίευσης σε φάκελο
+def get_or_create_folder(name, username, parent_id=None):
+    # Αν δεν υπάρχει parent_id, χρησιμοποιούμε το default folder
+    if parent_id is None:
+        parent_id = get_or_create_folder("Γενικά", username)
+
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
+        cur.execute("""
+            SELECT id_fakelou
+            FROM FAKELOS
+            WHERE Onoma = ?
+              AND Username = ?
+              AND id_kyriou_fakelou = ?
+        """, (name, username, parent_id))
+
+        row = cur.fetchone()
+        if row:
+            return row[0]
+
+        cur.execute("""
+            INSERT INTO FAKELOS (Onoma, Username, id_kyriou_fakelou, Megethos)
+            VALUES (?, ?, ?, 0)
+        """, (name, username, parent_id))
+        con.commit()
+        return cur.lastrowid
+
+def get_folder_id(username, folder_name):
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute("""
+            SELECT id_fakelou 
+            FROM FAKELOS 
+            WHERE Username = ? AND Onoma = ?;
+        """, (username, folder_name))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+def add_pub_to_folder(doi, folder_id, username):
+    #Το folder_id είναι υποχρεωτικό (NOT NULL στη βάση)
+    if folder_id is None:
+        raise ValueError("Πρέπει να οριστεί ένας έγκυρος φάκελος.")
+        
+    with get_connection() as con:
+        cur = con.cursor()
         try:
             cur.execute("""
                 INSERT INTO XRHSTHS_APOTHIK_DIMOS_SE_FAKELO (Username, DOI_dim, id_fakelou)
-                VALUES (?, ?, ?);
-                """, (username, doi, folder_id))
+                VALUES (?, ?, ?)
+            """, (username, doi, folder_id))
+            con.commit()
+        except sqlite3.IntegrityError:
+            #Αν είναι ήδη αποθηκευμένη στον φάκελο, δεν κάνουμε τίποτα
+            pass
+
+def remove_pub_from_folder(doi, folder_id, username):
+    with get_connection() as con: 
+        cur = con.cursor()
+        try:
+            cur.execute("""DELETE FROM XRHSTHS_APOTHIK_DIMOS_SE_FAKELO
+                        WHERE DOI_dim=? AND id_fakelou=? AND Username=?
+                        """, (doi, folder_id, username))
+            if cur.rowcount==0:
+                raise LookupError("Η δημοσίευση δεν βρέθηκε στον συγκεκριμένο φάκελο.")
             con.commit()
             return True
         except sqlite3.Error as e:
-            print(f"Σφάλμα κατά την αποθήκευση στον φάκελο: {e}")
-            return False
-                
-def get_user_folders(username): #επιστρέφει τους φακέλους ενός χρήστη
+            print(f"Σφάλμα κατά την αφαίρεση από τον φάκελο: {e}")
+            con.rollback()       
+
+def get_user_folders(username):
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
         cur.execute("""
             SELECT id_fakelou, id_kyriou_fakelou, Onoma, Megethos
-            FROM FAKELOS 
+            FROM FAKELOS
             WHERE Username=?;
-            """, (username,))
-        row=cur.fetchall()
-        if not row:
+        """, (username,))
+        rows = cur.fetchall()
+        if not rows:
             return []
-        colnames=[d[0] for d in cur.description]
-        return dict(zip(colnames, row))
+        colnames = [d[0] for d in cur.description]
+        return [dict(zip(colnames, r)) for r in rows]
 
-def delete_folder(folder_id, username): #διαγραφή φακέλου
+    
+def get_subfolders(folder_id, username):
     with get_connection() as con:
-        cur=con.cursor()
+        cur = con.cursor()
+        cur.execute("""
+            SELECT id_fakelou, Onoma
+            FROM FAKELOS
+            WHERE id_kyriou_fakelou = ? AND Username = ?
+        """, (folder_id, username))
+        return cur.fetchall()
+
+
+def delete_folder(folder_id, username):
+    with get_connection() as con:
+        cur = con.cursor()
         try:
-            #διαγράφω πρώτα τις συσχετίσεις
             cur.execute("""
                 DELETE FROM XRHSTHS_APOTHIK_DIMOS_SE_FAKELO
-                WHERE id_fakelou=? AND Username=?;
-                """, (folder_id, username))
-            #διαγραφή φακέλου
+                WHERE id_fakelou = ? AND Username = ?
+            """, (folder_id, username))
+
             cur.execute("""
                 DELETE FROM FAKELOS
-                WHERE id_fakelou=? AND Username=?;
-                """, (folder_id, username))
-            if cur.rowcount==0:
-                raise LookupError("Δεν βρέθηκε ο φάκελος")
+                WHERE id_fakelou = ? AND Username = ?
+            """, (folder_id, username))
+
+            if cur.rowcount == 0:
+                raise LookupError("Δεν βρέθηκε ο φάκελος.")
+
             con.commit()
             return True
+
         except sqlite3.Error as e:
-            print(f"Σφάλμα κατά τη διαγραφή του φακέλου: {e}")
-            con.rollback() #ακύρωση αλλαγών σε περίπτωση σφάλματος
-            return False
+            con.rollback()
+            raise ValueError("Σφάλμα κατά τη διαγραφή του φακέλου.") from e
+
 
 #Λειτουργίες χρηστών
 
@@ -421,26 +535,12 @@ def new_user(username, email, fullname, password): #εγγραφή νέου χρ
                 """, (username, email, fullname, hashed_password))
             con.commit()
             return True
-        except sqlite3.IntergityError as e:
+        except sqlite3.IntegrityError as e:
             if "Username" in str(e):
                 raise ValueError("Το username χρησιμοποιείται ήδη") from e
             if "email" in str(e):
                 raise ValueError("Το email χρησιμοποιείται ήδη") from e
             raise ValueError("Αποτυχία εγγραφής χρήστη") from e
-
-def get_user_by_username(username): #επιστρέφει τα στοιχεία χρήστη
-    with get_connection() as con:
-        cur=con.cursor()
-        cur.execute("""
-            SELECT Username, email, Onomateponymo, Password
-            FROM XRHSTHS 
-            WHERE Username=?;
-            """, (username,))
-        row=cur.fetchone()
-        if not row:
-            return None
-        colnames=[d[0] for d in cur.description]
-        return dict(zip(colnames, row))
 
 def verify_user(username, password): #επαλήθευση χρήστη
     user=get_user_by_username(username)
@@ -452,7 +552,7 @@ def verify_user(username, password): #επαλήθευση χρήστη
         return user
     return None
 
-#def get_user_by_username(username): 
+def get_user_by_username(username): 
     """Επιστρέφει τα στοιχεία χρήστη συμπεριλαμβανομένου του ρόλου."""
     with get_connection() as con:
         cur = con.cursor()
@@ -467,7 +567,7 @@ def verify_user(username, password): #επαλήθευση χρήστη
         colnames = [d[0] for d in cur.description]
         return dict(zip(colnames, row))
 
-#def is_admin(username):
+def is_admin(username):
     """Ελέγχει αν ένας χρήστης είναι διαχειριστής."""
     user = get_user_by_username(username)
     return user is not None and user.get('is_admin') == 1
