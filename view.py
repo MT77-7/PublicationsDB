@@ -111,7 +111,7 @@ def show_users(users):
     print("-" * 35)
 
     for u in users:
-        role = "ADMIN" if u["is_admin"] == 1 else "Χρήστης"
+        role = "ADMIN" if u["Is_admin"] == 1 else "Χρήστης"
         print(f"{u['Username']:<20} | {role}")
 
 def show_saved_publications_and_pick(saved_pubs):
@@ -136,3 +136,27 @@ def show_saved_publications_and_pick(saved_pubs):
         return None
 
     return saved_pubs[idx]["DOI"]
+
+def show_most_used_keyword(username, result):
+    print("\n--- ΠΙΟ ΣΥΧΝΗ ΛΕΞΗ-ΚΛΕΙΔΙ ΧΡΗΣΤΗ ---")
+
+    if not result:
+        print(f"Ο χρήστης '{username}' δεν έχει αποθηκευμένα άρθρα με λέξεις-κλειδιά.")
+        return
+
+    print(f"Χρήστης: {username}")
+    print(f"Λέξη-κλειδί: {result['keyword']}")
+    print(f"Πλήθος εμφανίσεων: {result['plithos']}")
+
+def show_latest_comment(result):
+    print("\n--- ΠΙΟ ΠΡΟΣΦΑΤΟ ΣΧΟΛΙΟ ΣΤΟ ΣΥΣΤΗΜΑ ---")
+
+    if not result:
+        print("Δεν υπάρχουν σχόλια στο σύστημα.")
+        return
+
+    print(f"Χρήστης: {result['Username']}")
+    print(f"DOI δημοσίευσης: {result['DOI']}")
+    print(f"Ημερομηνία: {result['Imer_dimiourgias']}")
+    print("Περιεχόμενο:")
+    print(result['Periexomeno'])

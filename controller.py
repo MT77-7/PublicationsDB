@@ -2,13 +2,14 @@ import getpass
 from mymodel import (get_all_publications, get_saved_publications, get_folder_publications_details, insert_publication, delete_publication,
                     get_publication_by_doi, get_pub_type, get_detailed_pub_info, get_all_authors, insert_author,
                      get_authors_from_publication, link_author_to_publication, get_all_institutions,
-                     get_keywords_for_publication, get_keyword_id, insert_new_keyword, insert_keyword,
+                     get_keywords_for_publication, get_keyword_id, insert_new_keyword, insert_keyword, get_most_used_keyword_for_user,
                      search_publications, search_authors, get_pubs_by_author, get_pubs_by_keyword, update_pub_title, update_username,
-                     get_folder_parent_id, is_in_general_subtree, get_comments_by_pub_and_user, insert_comment_to_pub, delete_comment, get_or_create_folder,
-                     add_pub_to_folder, remove_pub_from_folder, get_user_folders, get_subfolders, 
+                     get_folder_parent_id, is_in_general_subtree, get_comments_by_pub_and_user, insert_comment_to_pub, delete_comment, get_latest_comment_with_doi,
+                     get_or_create_folder, add_pub_to_folder, remove_pub_from_folder, get_user_folders, get_subfolders, 
                      delete_folder, hash_password, new_user, delete_user_account, get_user_by_username, verify_user, get_all_usernames, is_admin, get_connection)
 
-from view import (show_message, show_error, show_menu, show_publications_list, show_publication_details, print_folder_subtree, show_users, show_saved_publications_and_pick)
+from view import (show_message, show_error, show_menu, show_publications_list, show_publication_details, print_folder_subtree, show_users, show_saved_publications_and_pick,
+                  show_most_used_keyword, show_latest_comment)
 
 class BackToMenu(Exception):
     """Χρησιμοποιείται για να επιστρέφουμε άμεσα στο προηγούμενο μενού."""
@@ -42,7 +43,9 @@ admin_options = {
     "4": "Προβολή δημοσίευσεων", 
     "5": "Προβολή συγγραφέων και ιδρυμάτων",
     "6": "Προβολή χρηστών",
-    "7": "Διαγραφή χρήστη"
+    "7": "Διαγραφή χρήστη",
+    "8": "Προβολή πιο πρόσφατου σχόλιου χρήστη",
+    "9": "Προτίμηση χρήστη (λέξη-κλειδί)"
 
 }
 
@@ -239,6 +242,7 @@ def delete_publication_from_folder(username): #διαγραφή δημοσίευ
             return
 
         general_id = get_or_create_folder("Γενικά", username)
+        user_folders = get_user_folders(username)
 
         print_folder_subtree(username, general_id, show_pubs=False)
 
@@ -301,6 +305,7 @@ def new_folder(username): #δημιουργία φακέλου
 def delete_user_folder(username): #διαγραφή φακέλου από τον χρήστη
     try:
         general_id = get_or_create_folder("Γενικά", username)
+        user_folders = get_user_folders(username)
 
         print_folder_subtree(username, general_id, show_pubs=False)
 
@@ -644,6 +649,27 @@ def admin_delete_user(current_admin_username):
     except Exception as e:
         show_error(f"Σφάλμα κατά τη διαγραφή χρήστη: {e}")
 
+def admin_most_used_keyword_by_user():
+    try:
+        username = get_user_input("Δώστε username χρήστη: ")
+        if not username:
+            show_error("Το username δεν μπορεί να είναι κενό.")
+            return
+
+        result = get_most_used_keyword_for_user(username)
+        show_most_used_keyword(username, result)
+
+    except BackToMenu:
+        raise    
+    except Exception as e:
+        show_error(f"Σφάλμα κατά την εκτέλεση ερωτήματος: {e}")
+
+def admin_latest_comment():
+    try:
+        result = get_latest_comment_with_doi()
+        show_latest_comment(result)
+    except Exception as e:
+        show_error(f"Σφάλμα κατά την ανάκτηση σχολίου: {e}")
 
 def handle_user_choice(choice, username): #διαχείριση επιλογών χρήστη
     actions = {
@@ -677,6 +703,8 @@ def handle_admin_choice(choice, admin_username): #διαχείριση επιλ�
         "5": admin_view_authors_and_institutions,
         "6": admin_view_users,
         "7": lambda: admin_delete_user(admin_username),
+        "8": admin_latest_comment,
+        "9": admin_most_used_keyword_by_user,
     }
     action = actions.get(choice)
     if not action:
