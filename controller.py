@@ -12,7 +12,6 @@ from view import (show_message, show_error, show_menu, show_publications_list, s
                   show_most_used_keyword, show_latest_comment)
 
 class BackToMenu(Exception):
-    """Χρησιμοποιείται για να επιστρέφουμε άμεσα στο προηγούμενο μενού."""
     pass
 
 starting_options = {
