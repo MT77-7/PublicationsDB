@@ -84,7 +84,7 @@ def sign_up(): #εγγραφή χρήστη
         show_error(str(e))
         return False
 
-def show_general_subtree(username):
+def show_general_subtree(username): #επιστρέφει δέντρο με φακέλους χρήστη
     try:
         general_id = get_or_create_folder("Γενικά", username)
 
@@ -142,7 +142,7 @@ def show_folder_under_general(username): #εμφανίζει υποφακέλο�
     except Exception as e:
         show_error(f"Σφάλμα στην επιλογή 'Εμφάνιση φακέλου': {e}")
 
-def view_saved_pub_details(username):
+def view_saved_pub_details(username): #εμφανίζει τις λεπτομέρειες μιας δημοσίευσης
     try:
         saved_pubs = get_saved_publications(username) 
 
@@ -611,14 +611,14 @@ def admin_view_authors_and_institutions(): #προβολή όλων των συ�
     except Exception as e:
         show_error(f"Σφάλμα κατά την προβολή: {e}")
 
-def admin_view_users():
+def admin_view_users(): #προβολή χρηστών από τον διαχειριστή
     try:
         users = get_all_usernames()
         show_users(users)
     except Exception as e:
         show_error(f"Σφάλμα κατά την προβολή χρηστών: {e}")
 
-def admin_delete_user(current_admin_username):
+def admin_delete_user(current_admin_username): #διαγραφή χρήστη από διαχειριστή
     try:
         users = get_all_usernames()
         show_users(users)
@@ -647,7 +647,7 @@ def admin_delete_user(current_admin_username):
     except Exception as e:
         show_error(f"Σφάλμα κατά τη διαγραφή χρήστη: {e}")
 
-def admin_most_used_keyword_by_user():
+def admin_most_used_keyword_by_user(): #προβολή της πιο συχνής λέξης-κλειδί του χρήστη
     try:
         username = get_user_input("Δώστε username χρήστη: ")
         if not username:
@@ -770,4 +770,5 @@ def admin_loop(username):
 
 if __name__ == "__main__":
     app_loop()
+
 
