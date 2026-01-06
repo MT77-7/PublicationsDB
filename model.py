@@ -386,7 +386,8 @@ def get_comments_by_pub_and_user(doi, username): #επιστρέφει σχόλ�
         cur.execute("""
             SELECT S.id_sxoliou,
                    S.Periexomeno,
-                   S.Imer_dimiourgias
+                   S.Imer_dimiourgias,
+                   P.Username
             FROM SXOLIO AS S
             JOIN PROSTHIKI_SXOLIOU_SE_DIMOSIEYSI AS P
                  ON S.id_sxoliou = P.id_sxoliou

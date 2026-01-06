@@ -84,7 +84,7 @@ def sign_up(): #εγγραφή χρήστη
         show_error(str(e))
         return False
 
-def show_general_subtree(username): #επιστρέφει δέντρο με φακέλους χρήστη
+def show_general_subtree(username):
     try:
         general_id = get_or_create_folder("Γενικά", username)
 
@@ -142,7 +142,7 @@ def show_folder_under_general(username): #εμφανίζει υποφακέλο�
     except Exception as e:
         show_error(f"Σφάλμα στην επιλογή 'Εμφάνιση φακέλου': {e}")
 
-def view_saved_pub_details(username): #εμφανίζει τις λεπτομέρειες μιας δημοσίευσης
+def view_saved_pub_details(username):
     try:
         saved_pubs = get_saved_publications(username) 
 
@@ -157,8 +157,9 @@ def view_saved_pub_details(username): #εμφανίζει τις λεπτομέ�
 
         p_type = get_pub_type(selected_doi)
         extra_info = get_detailed_pub_info(selected_doi, p_type)
+        comments_list = get_comments_by_pub_and_user(selected_doi, username)
 
-        show_publication_details(pub_data)
+        show_publication_details(pub_data, comments=comments_list)
 
         if extra_info:
             print(f"Επιπλέον στοιχεία ({p_type}):")
@@ -418,7 +419,7 @@ def search_pub_by_author(): #αναζήτηση δημοσίευσης με βά
     name = get_user_input("Εισάγετε ονοματεπώνυμο συγγραφέα: ")
     if not name:
         show_error("Η αναζήτηση δεν μπορεί να είναι κενή.")
-        return
+        
 
     try:
         authors = search_authors(name)
@@ -611,14 +612,14 @@ def admin_view_authors_and_institutions(): #προβολή όλων των συ�
     except Exception as e:
         show_error(f"Σφάλμα κατά την προβολή: {e}")
 
-def admin_view_users(): #προβολή χρηστών από τον διαχειριστή
+def admin_view_users():
     try:
         users = get_all_usernames()
         show_users(users)
     except Exception as e:
         show_error(f"Σφάλμα κατά την προβολή χρηστών: {e}")
 
-def admin_delete_user(current_admin_username): #διαγραφή χρήστη από διαχειριστή
+def admin_delete_user(current_admin_username):
     try:
         users = get_all_usernames()
         show_users(users)
@@ -647,7 +648,7 @@ def admin_delete_user(current_admin_username): #διαγραφή χρήστη α
     except Exception as e:
         show_error(f"Σφάλμα κατά τη διαγραφή χρήστη: {e}")
 
-def admin_most_used_keyword_by_user(): #προβολή της πιο συχνής λέξης-κλειδί του χρήστη
+def admin_most_used_keyword_by_user():
     try:
         username = get_user_input("Δώστε username χρήστη: ")
         if not username:
@@ -770,6 +771,4 @@ def admin_loop(username):
 
 if __name__ == "__main__":
     app_loop()
-
-
 

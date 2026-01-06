@@ -42,7 +42,7 @@ def show_publication_details(pub, authors=None, comments=None):  #Εμφανίζ
     if comments:
         print("ΣΧΟΛΙΑ:")
         for c in comments:
-            print(f"- [{c['Username']}]: {c['Keimeno_sxolioy']} ({c['Imeromhnia_sxolioy']})")
+            print(f"- [{c['Username']}]: {c['Periexomeno']} ({c['Imer_dimiourgias']})")
     else:
         print("Δεν υπάρχουν σχόλια για αυτή τη δημοσίευση.")
     print("="*60)
