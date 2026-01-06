@@ -242,7 +242,7 @@ def delete_publication_from_folder(username): #διαγραφή δημοσίευ
         general_id = get_or_create_folder("Γενικά", username)
         user_folders = get_user_folders(username)
 
-        print_folder_subtree(username, general_id, show_pubs=False)
+        print_folder_subtree(user_folders, general_id, show_pubs=False)
 
         raw = get_user_input("\nΔώστε το ID του φακέλου από τον οποίο θα αφαιρεθεί η δημοσίευση: ")
         if not raw.isdigit():
@@ -305,7 +305,7 @@ def delete_user_folder(username): #διαγραφή φακέλου από τον
         general_id = get_or_create_folder("Γενικά", username)
         user_folders = get_user_folders(username)
 
-        print_folder_subtree(username, general_id, show_pubs=False)
+        print_folder_subtree(user_folders, general_id, show_pubs=False)
 
         raw = get_user_input("\nΔώστε το ID του φακέλου που θέλετε να διαγράψετε: ")
         if not raw.isdigit():
@@ -770,5 +770,6 @@ def admin_loop(username):
 
 if __name__ == "__main__":
     app_loop()
+
 
 
